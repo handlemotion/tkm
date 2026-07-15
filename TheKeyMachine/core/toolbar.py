@@ -1871,144 +1871,134 @@ class toolbar(object):
 
 
 
-    # Variable global para almacenar los valores originales de los keyframes
+    # Diccionario donde se guarda, por objeto y atributo, el valor original de cada key
+    # y una referencia del ultimo valor visto en el frame actual.
     animation_offset_original_values = {}
 
-    def store_keyframes(self):
-        global animation_offset_original_values
-
-        # Obtener el rango de tiempo seleccionado en el Range Slider
+    def _get_animation_offset_time_range(self):
+        # Devuelve el rango de tiempo seleccionado en el Range Slider.
         aTimeSlider = mel.eval('$tmpVar=$gPlayBackSlider')
         timeRange = cmds.timeControl(aTimeSlider, q=True, rangeArray=True)
 
-        # Si no se selecciona un rango, utilizar todo el rango de la línea de tiempo
+        # Si no se ha seleccionado un rango, se utiliza todo el rango de la linea de tiempo.
         if timeRange[1] - timeRange[0] == 1:
             timeRange = [cmds.playbackOptions(q=True, minTime=True), cmds.playbackOptions(q=True, maxTime=True)]
 
+        return timeRange
+
+
+    def _capture_animation_offset_baseline(self, obj, timeRange):
+        # Guarda, para un objeto, el valor original de cada key dentro del rango, y el
+        # valor "en vivo" en el frame actual. Ese valor en vivo es lo que se compara en
+        # cada ciclo para detectar un movimiento, y permite que la herramienta funcione
+        # aunque el playhead no este exactamente sobre una key.
+
+        attrs = cmds.listAttr(obj, keyable=True)
+        if not attrs:
+            return
+
+        current_time = cmds.currentTime(query=True)
+        obj_data = self.animation_offset_original_values.setdefault(obj, {})
+
+        for attr in attrs:
+            attr_full_name = obj + '.' + attr
+            if not cmds.getAttr(attr_full_name, settable=True):
+                continue
+
+            keyframes = cmds.keyframe(obj, attribute=attr, query=True)
+            if not keyframes:
+                continue
+
+            key_values = {frame: cmds.getAttr(attr_full_name, time=frame) for frame in keyframes if timeRange[0] <= frame <= timeRange[1]}
+            if not key_values:
+                continue
+
+            obj_data[attr] = {
+                'keys': key_values,
+                'last_time': current_time,
+                'last_value': cmds.getAttr(attr_full_name, time=current_time),
+            }
+
+
+    def store_keyframes(self):
+
+        timeRange = self._get_animation_offset_time_range()
         selected_objects = cmds.ls(selection=True)
 
         for obj in selected_objects:
-            attrs = cmds.listAttr(obj, keyable=True)
-            if attrs:
-                self.animation_offset_original_values[obj] = {}
-                for attr in attrs:
-                    attr_full_name = obj + '.' + attr
-                    if cmds.getAttr(attr_full_name, settable=True):
-                        keyframes = cmds.keyframe(obj, attribute=attr, query=True)
-                        if keyframes:
-                            self.animation_offset_original_values[obj][attr] = {frame: cmds.getAttr(attr_full_name, time=frame) for frame in keyframes if timeRange[0] <= frame <= timeRange[1]}
+            self._capture_animation_offset_baseline(obj, timeRange)
 
-        # borra selected range slider 
-        user_selected_objs = cmds.ls(selection=True)
+        # Vuelve a dejar seleccionados exactamente los mismos objetos que habia antes,
+        # para no perder una seleccion multiple al activar la herramienta.
         cmds.select(clear=True)
-        cmds.select(obj)
-
+        if selected_objects:
+            cmds.select(selected_objects)
 
 
 
     def adjust_keyframes(self):
 
-        def _as_scalar(value):
-            v = value
-            while isinstance(v, (list, tuple)) and len(v) == 1:
-                v = v[0]
-            if isinstance(v, (list, tuple)):
-                return None, False
-            return v, True
-
-        global animation_offset_original_values
-
-        # Range del Time Slider
-        aTimeSlider = mel.eval('$tmpVar=$gPlayBackSlider')
-        timeRange = cmds.timeControl(aTimeSlider, q=True, rangeArray=True)
-        if timeRange[1] - timeRange[0] == 1:
-            timeRange = [
-                cmds.playbackOptions(q=True, minTime=True),
-                cmds.playbackOptions(q=True, maxTime=True),
-            ]
-
+        timeRange = self._get_animation_offset_time_range()
         selected_objects = cmds.ls(selection=True)
+        current_time = cmds.currentTime(query=True)
+        current_time_in_range = timeRange[0] <= current_time <= timeRange[1]
 
         for obj in selected_objects:
-            # SOLO escalares para evitar double3
-            attrs = cmds.listAttr(obj, keyable=True, scalar=True) or []
-            for attr in attrs:
+
+            # Si es un objeto que ha entrado en la seleccion durante esta misma sesion
+            # de la herramienta (aun no esta siendo controlado), se captura su estado y
+            # se pasa al siguiente objeto sin calcular offset todavia.
+            if obj not in self.animation_offset_original_values:
+                self._capture_animation_offset_baseline(obj, timeRange)
+                continue
+
+            for attr, data in self.animation_offset_original_values[obj].items():
+
                 attr_full_name = obj + '.' + attr
 
-                # salta bloqueados/no seteables y tipos no numéricos
-                if not cmds.getAttr(attr_full_name, settable=True) or cmds.getAttr(attr_full_name, lock=True):
-                    continue
-                a_type = cmds.getAttr(attr_full_name, type=True)
-                if a_type in ('enum', 'string', 'message'):
-                    continue
-
-                keyframes = cmds.keyframe(obj, attribute=attr, query=True)
-                if not keyframes:
+                # Si el playhead ha cambiado de frame desde el ultimo ciclo, o esta fuera
+                # del rango a tener en cuenta, no se puede comparar de forma fiable: solo
+                # se actualiza la referencia para el siguiente ciclo.
+                if data['last_time'] != current_time or not current_time_in_range:
+                    data['last_time'] = current_time
+                    data['last_value'] = cmds.getAttr(attr_full_name, time=current_time)
                     continue
 
-                for frame in keyframes:
-                    if not (timeRange[0] <= frame <= timeRange[1]):
-                        continue
+                live_value = cmds.getAttr(attr_full_name, time=current_time)
+                diff = live_value - data['last_value']
 
-                    # valores actual y original
-                    cur_raw = cmds.getAttr(attr_full_name, time=frame)
-                    current_value, ok_cur = _as_scalar(cur_raw)
+                if diff == 0:
+                    continue
 
-                    original_value = (
-                        self.animation_offset_original_values
-                        .get(obj, {})
-                        .get(attr, {})
-                        .get(frame)
-                    )
+                had_key_at_current_time = any(abs(frame - current_time) < 1e-4 for frame in data['keys'])
 
-                    if original_value is not None:
-                        original_value, ok_org = _as_scalar(original_value)
-                    else:
-                        ok_org = False
+                # Aplica el offset detectado a todas las keys originales del atributo.
+                new_keys = {}
+                for frame, original_value in data['keys'].items():
+                    new_value = original_value + diff
+                    cmds.setKeyframe(obj, attribute=attr, time=frame, value=new_value)
+                    new_keys[frame] = new_value
+                data['keys'] = new_keys
 
-                    if not (ok_cur and ok_org):
-                        # si alguno no es escalar, ignora este par (evita restar listas)
-                        continue
+                # Si el frame actual no tenia key en origen, el Auto Key habra creado una
+                # key de mas al mover el objeto: se elimina para no alterar el numero de
+                # keys de la curva, ya que el offset ya ha sido propagado a las keys
+                # originales.
+                if not had_key_at_current_time:
+                    existing = cmds.keyframe(obj, attribute=attr, time=(current_time, current_time), query=True)
+                    if existing:
+                        cmds.cutKey(obj, attribute=attr, time=(current_time, current_time))
 
-                    diff = current_value - original_value
-                    if diff == 0:
-                        continue
-
-                    # aplica offset a todas las keys del rango (UNA sola vez por atributo)
-                    for frame_to_update in keyframes:
-                        if not (timeRange[0] <= frame_to_update <= timeRange[1]):
-                            continue
-
-                        orig_update = (
-                            self.animation_offset_original_values
-                            .get(obj, {})
-                            .get(attr, {})
-                            .get(frame_to_update)
-                        )
-                        if orig_update is None:
-                            continue
-
-                        orig_update, ok_upd = _as_scalar(orig_update)
-                        if not ok_upd:
-                            continue
-
-                        new_val = orig_update + diff
-                        cmds.setKeyframe(obj, attribute=attr, time=frame_to_update, value=new_val)
-
-
-                    for fr in keyframes:
-                        if timeRange[0] <= fr <= timeRange[1]:
-                            self.animation_offset_original_values.setdefault(obj, {}).setdefault(attr, {})[fr] = cmds.getAttr(attr_full_name, time=fr)
-
-
-                    break  # salimos del bucle de frames (ya aplicamos el offset para este attr)
+                data['last_value'] = live_value
 
 
     def offset_animation_deferred(self, interval):
+
         def adjust_offset_animation():
+
             self.adjust_keyframes()
 
-        while self.anim_offset_run_timer:
+        while self.anim_offset_run_timer: 
             time.sleep(interval)
             utils.executeDeferred(adjust_offset_animation)
 
@@ -2029,6 +2019,14 @@ class toolbar(object):
                 cmds.undoInfo(openChunk=True)
                 cmds.iconTextButton("anim_offset_button", e=True, bgc=(0.3, 0.3, 0.3))
                 self.anim_offset_run_timer = True
+
+                # Guarda el estado actual de Auto Key para restaurarlo al desactivar la
+                # herramienta, y lo activa mientras tanto: es lo que permite que el offset
+                # funcione tambien en frames que no sean una key existente.
+                self._anim_offset_prev_autokey_state = cmds.autoKeyframe(query=True, state=True)
+                cmds.autoKeyframe(state=True)
+
+                self.animation_offset_original_values = {}
                 self.store_keyframes()
 
                 t = threading.Thread(target=self.offset_animation_deferred, args=(0.3,))
@@ -2037,12 +2035,14 @@ class toolbar(object):
                 cmds.undoInfo(closeChunk=True)
                 cmds.iconTextButton("anim_offset_button", e=True, bgc=(0.2, 0.2, 0.2))
                 self.anim_offset_run_timer = False
+
+                # Restaura el estado de Auto Key que habia antes de activar la herramienta.
+                if hasattr(self, '_anim_offset_prev_autokey_state'):
+                    cmds.autoKeyframe(state=self._anim_offset_prev_autokey_state)
+
+                self.animation_offset_original_values = {}
                 pass
 
-
-
-
-#---------------------------------------------------------------
 
     def toggle_micro_move_button(self, *args):
 
@@ -3722,7 +3722,6 @@ class toolbar(object):
         cmds.menuItem(l="Paste Animation", c=keyTools.paste_animation, image=media.paste_animation_image, p=copy_paste_animation_popup_menu)
         cmds.menuItem(l="Paste Insert", c=keyTools.paste_insert_animation, image=media.paste_insert_animation_image, p=copy_paste_animation_popup_menu)
         cmds.menuItem(l="Paste Opposite", c=keyTools.paste_opposite_animation, image=media.paste_opposite_animation_image, p=copy_paste_animation_popup_menu)
-        cmds.menuItem(l="Paste To", c=lambda *_: keyTools.paste_animation_to(), image=media.paste_animation_image, p=copy_paste_animation_popup_menu)
         cmds.menuItem(divider=True, parent=copy_paste_animation_popup_menu)
         cmds.menuItem(l="Copy Pose", c=keyTools.copy_pose, image=media.copy_pose_image, p=copy_paste_animation_popup_menu)
         cmds.menuItem(l="Paste Pose", c=keyTools.paste_pose, image=media.paste_pose_image, p=copy_paste_animation_popup_menu)
