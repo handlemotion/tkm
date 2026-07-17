@@ -18,6 +18,13 @@ Happy animating! 🎬
 
 <br><br><br>
 
+#  A note on forks and derivative projects
+TheKeyMachine is released under the GPL-3.0 license, which means anyone is free to fork, modify, and redistribute the code. That's by design, and I welcome community contributions and forks.
+However, forks and derivative projects are independent works maintained by their respective authors. I do not review, endorse, or take responsibility for the content of third-party forks, including any visual design, UI elements, or features they may add. If a fork's name, branding, or description implies official affiliation with TheKeyMachine or myself, that affiliation is not accurate unless explicitly stated here.
+If you're evaluating a fork, please check its own repository and license notices directly.
+
+<br><br>
+
 
 <img width="269px" src="./TheKeyMachine/data/img/tkm_logo_small.png" />
 
