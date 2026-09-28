@@ -22,8 +22,9 @@ PAYLOAD_PATHS = (
     "license_gpl-3.0.txt",
 )
 TAG_PATTERN = re.compile(
-    r"v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?"
+    r"v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
 )
+INSTALLER_SOURCE = "TheKeyMachine_Drag&Drop_installer.py"
 
 
 def _unique_match(path: str, pattern: str) -> tuple[str, ...]:
@@ -96,7 +97,7 @@ def verify(tag: str | None = None) -> tuple[str, str, list[Path]]:
     if tag:
         match = TAG_PATTERN.fullmatch(tag)
         if not match:
-            raise ValueError("Tag must look like v1.2.3 or v1.2.3-beta.1")
+            raise ValueError("Tag must look like v1.2.3")
         if match.group("version") != version:
             raise ValueError(f"Tag {tag} does not match embedded version {version}")
 
@@ -114,11 +115,17 @@ def package(output_dir: Path, tag: str | None) -> tuple[Path, Path, str]:
     archive = output_dir / f"TheKeyMachine-{tag}.zip"
     prefix = f"TheKeyMachine-{tag}"
 
+    def archive_name(path: Path) -> str:
+        relative = path.relative_to(ROOT).as_posix()
+        if relative == INSTALLER_SOURCE:
+            relative = f"TheKeyMachine_Installer_v{version.replace('.', '_')}.py"
+        return f"{prefix}/{relative}"
+
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         for path in files:
-            bundle.write(path, f"{prefix}/{path.relative_to(ROOT).as_posix()}")
+            bundle.write(path, archive_name(path))
 
-    expected = [f"{prefix}/{path.relative_to(ROOT).as_posix()}" for path in files]
+    expected = [archive_name(path) for path in files]
     with zipfile.ZipFile(archive) as bundle:
         if bundle.namelist() != expected or bundle.testzip() is not None:
             raise ValueError("Packaged ZIP does not exactly match the tracked installer payload")
