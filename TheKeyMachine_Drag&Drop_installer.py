@@ -21,6 +21,7 @@
 import sys
 import os
 import platform
+import re
 import shutil
 import logging
 from functools import partial
@@ -100,6 +101,32 @@ def _remove_tkm_env_blocks(data):
     return prefix + b"".join(output)
 
 
+def _update_tkm_env_data(data, tkm_img_folder, windows):
+    first_newline = data.find(b"\n")
+    newline = (b"\r\n" if windows else b"\n") if first_newline < 0 else (b"\r\n" if first_newline > 0 and data[first_newline - 1:first_newline] == b"\r" else b"\n")
+    data = _remove_tkm_env_blocks(data)
+    prefix = b"\xef\xbb\xbf" if data.startswith(b"\xef\xbb\xbf") else b""
+    body = data[len(prefix):]
+    insertion = None
+    offset = 0
+    inherited_path = b"%XBMLANGPATH%" if windows else b"$XBMLANGPATH"
+    for line in body.splitlines(keepends=True):
+        assignment = re.match(br"[ \t]*XBMLANGPATH[ \t]*=[ \t]*(.*)", line.rstrip(b"\r\n"))
+        if assignment:
+            inherited_path = assignment.group(1).strip()
+            insertion = offset
+            break
+        offset += len(line)
+    if insertion is None:
+        insertion = 0
+    separator = b";" if windows else b":"
+    value = tkm_img_folder.encode("utf-8")
+    if inherited_path:
+        value += separator + inherited_path
+    block = newline.join((TKM_ENV_START, b"XBMLANGPATH = " + value, TKM_ENV_END, b""))
+    return prefix + body[:insertion] + block + body[insertion:]
+
+
 def update_maya_env():
     version_maya = cmds.about(version=True)
     user_dir = cmds.internalVar(userAppDir=True)
@@ -116,13 +143,7 @@ def update_maya_env():
     else:
         env_data = b""
 
-    first_newline = env_data.find(b"\n")
-    newline = os.linesep.encode("ascii") if first_newline < 0 else (b"\r\n" if first_newline > 0 and env_data[first_newline - 1:first_newline] == b"\r" else b"\n")
-    env_data = _remove_tkm_env_blocks(env_data)
-    path_separator = b";%XBMLANGPATH%" if platform.system() == 'Windows' else b":$XBMLANGPATH"
-    block = newline.join((TKM_ENV_START, b"XBMLANGPATH = " + tkm_img_folder.encode("utf-8") + path_separator, TKM_ENV_END, b""))
-    prefix = b"\xef\xbb\xbf" if env_data.startswith(b"\xef\xbb\xbf") else b""
-    updated_env_data = prefix + block + env_data[len(prefix):]
+    updated_env_data = _update_tkm_env_data(env_data, tkm_img_folder, platform.system() == 'Windows')
     with open(env_file_path, 'wb') as file:
         file.write(updated_env_data)
 

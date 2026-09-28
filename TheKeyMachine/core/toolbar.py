@@ -205,6 +205,13 @@ modules_to_reload = [
     cbScripts
 ]
 
+previous_toolbar = globals().get('tb')
+if previous_toolbar is not None and hasattr(previous_toolbar, 'cleanup'):
+    previous_toolbar.cleanup()
+    for workspace in ('k', 's'):
+        if cmds.workspaceControl(workspace, query=True, exists=True):
+            cmds.deleteUI(workspace, control=True)
+
 for module in modules_to_reload:
     importlib.reload(module)
 
@@ -222,17 +229,28 @@ selection_sets_workspace = 's'
 
 class toolbar(object):
     def __init__(self):
+        self._disposed = False
         self.bar_center_value = 10
-        self.anim_offset_run_timer = True
+        self.anim_offset_run_timer = False
         self.toggleAnimOffsetButtonState = False
         self.micro_move_button_state = False
-        self.micro_move_run_timer = True
+        self.micro_move_run_timer = False
         self.animation_offset_original_values = {}
         self.move_keyframes_intField = None
         self.setgroup_states = {}
         self.setgroup_buttons = {}
         self.open_new_scene_scriptJob = None
         self.selection_changed_scriptJob = None
+        self._anim_offset_stop = threading.Event()
+        self._anim_offset_thread = None
+        self._anim_offset_undo_open = False
+        self._anim_offset_prev_autokey_state = None
+        self._micro_move_stop = threading.Event()
+        self._micro_move_thread = None
+        self._micro_move_undo_open = False
+        self._micro_move_prev_tool = None
+        self._link_obj_stop = threading.Event()
+        self._link_obj_thread = None
         self._center_toolbar_stop = threading.Event()
         self.tc = threading.Thread(target=self.toolbar_center_time, args=(1,))      # Create a thread to center the toolbar
         self.run_centerToolbar = True
@@ -249,8 +267,9 @@ class toolbar(object):
         # This first if statement checks whether the scriptJob exists; if not, it either creates or deletes it.
         # Function that runs when new scenes are opened
         def on_scene_opened():
-            self.update_selectionSets_on_new_scene()
-            self.update_popup_menu()
+            if not self._disposed:
+                self.update_selectionSets_on_new_scene()
+                self.update_popup_menu()
         self.open_new_scene_scriptJob = cmds.scriptJob(event=("SceneOpened", on_scene_opened))
 
 
@@ -262,7 +281,10 @@ class toolbar(object):
 
 
         # Attempt to load customGraph
-        QTimer.singleShot(6000, self.load_customGraph_try_01)
+        self._custom_graph_timer = QTimer()
+        self._custom_graph_timer.setSingleShot(True)
+        self._custom_graph_timer.timeout.connect(self.load_customGraph_try_01)
+        self._custom_graph_timer.start(6000)
 
 
 
@@ -291,13 +313,19 @@ class toolbar(object):
 
     # These two functions attempt to check if the Graph Editor is open and load customGraph in that case; they are made with two attempts
     def load_customGraph_try_01(self):
+        if self._disposed:
+            return
         graph_vis = cmds.getPanel(vis=True)
         if graph_vis and "graphEditor1" in graph_vis:
             cg.createCustomGraph()
         else:
-            QTimer.singleShot(8000, self.load_customGraph_try_02)
+            self._custom_graph_timer.timeout.disconnect()
+            self._custom_graph_timer.timeout.connect(self.load_customGraph_try_02)
+            self._custom_graph_timer.start(8000)
 
     def load_customGraph_try_02(self):
+        if self._disposed:
+            return
         graph_vis = cmds.getPanel(vis=True)
         if graph_vis and "graphEditor1" in graph_vis:
             cg.createCustomGraph()
@@ -326,14 +354,42 @@ class toolbar(object):
     
 
     def cleanup(self):
+        if self._disposed:
+            return
+        self._disposed = True
+        self._custom_graph_timer.stop()
+        self._anim_offset_stop.set()
+        self._micro_move_stop.set()
+        self._link_obj_stop.set()
         self.stop_center_toolbar_thread()
+        self.anim_offset_run_timer = False
+        self.micro_move_run_timer = False
+        self._join_worker(self._anim_offset_thread)
+        self._join_worker(self._micro_move_thread)
+        self._join_worker(self._link_obj_thread)
+        self._stop_animation_offset()
+        if hasattr(bar, 'cleanup_owned_resources'):
+            bar.cleanup_owned_resources()
+        self._stop_micro_move()
+        keyTools.remove_link_obj_callbacks()
         for attribute in ("open_new_scene_scriptJob", "selection_changed_scriptJob"):
             job_id = getattr(self, attribute, None)
             if job_id is not None and cmds.scriptJob(exists=job_id):
                 cmds.scriptJob(kill=job_id, force=True)
             setattr(self, attribute, None)
-        if self.tc.is_alive() and self.tc is not threading.current_thread():
-            self.tc.join(timeout=1)
+        self._join_worker(self.tc)
+
+    @staticmethod
+    def _join_worker(worker):
+        if worker is not None and worker.is_alive() and worker is not threading.current_thread():
+            worker.join(timeout=1)
+
+    def _run_if_active(self, callback):
+        if not self._disposed:
+            callback()
+
+    def _execute_deferred(self, callback):
+        cmds.evalDeferred(lambda: self._run_if_active(callback))
 
 
     # OBSOLETED - to be removed
@@ -542,7 +598,7 @@ class toolbar(object):
                         cmds.sets(obj, add=set_name_with_suffix)
 
         # Actualizar los botones después de importar los sets
-        QTimer.singleShot(500, self.create_buttons_for_sel_sets)
+        QTimer.singleShot(500, lambda: self._run_if_active(self.create_buttons_for_sel_sets))
 
 
 
@@ -580,14 +636,14 @@ class toolbar(object):
         def rename_setgroup_deferred():
             cmds.rename(old_setgroup_name, new_setgroup_name)
 
-        cmds.evalDeferred(rename_setgroup_deferred)
+        self._execute_deferred(rename_setgroup_deferred)
 
         # Close the change name window if it exists
         if cmds.window("changeSetGroupNameWindow", exists=True):
             cmds.deleteUI("changeSetGroupNameWindow")
 
         # Update the buttons for set groups
-        cmds.evalDeferred(self.create_buttons_for_sel_sets)
+        self._execute_deferred(self.create_buttons_for_sel_sets)
 
 
 
@@ -734,14 +790,14 @@ class toolbar(object):
         def rename_set_deferred():
             cmds.rename(old_set_name, new_set_name_with_color)
 
-        cmds.evalDeferred(rename_set_deferred)
+        self._execute_deferred(rename_set_deferred)
 
         # Close the change set name window if it exists
         if cmds.window("changeSetNameWindow", exists=True):
             cmds.deleteUI("changeSetNameWindow")
 
         # Update the buttons for selection groups
-        cmds.evalDeferred(self.create_buttons_for_sel_sets)
+        self._execute_deferred(self.create_buttons_for_sel_sets)
 
 
 
@@ -886,7 +942,7 @@ class toolbar(object):
             cmds.deleteUI("changeSetColorWindow")
 
         # Update the buttons for selection groups
-        cmds.evalDeferred(self.create_buttons_for_sel_sets)
+        self._execute_deferred(self.create_buttons_for_sel_sets)
 
 
 
@@ -936,7 +992,7 @@ class toolbar(object):
             set_name_field_widget.clear()
 
             # Delay the update of buttons
-            cmds.evalDeferred(self.create_buttons_for_sel_sets)
+            self._execute_deferred(self.create_buttons_for_sel_sets)
 
 
         else:
@@ -1327,7 +1383,7 @@ class toolbar(object):
                     cmds.sets(set_name, e=True, remove=current_setgroup)
                     cmds.sets(set_name, e=True, add=target_setgroup)
                     cmds.warning("Set moved")
-                    cmds.evalDeferred(self.create_buttons_for_sel_sets)
+                    self._execute_deferred(self.create_buttons_for_sel_sets)
             else:
                 cmds.warning(f"The set is not part of any setgroup.")
         else:
@@ -1761,9 +1817,9 @@ class toolbar(object):
             cmds.delete(set_name)
 
             # Retrasar la actualización de los botones
-            cmds.evalDeferred(self.create_buttons_for_sel_sets)
+            self._execute_deferred(self.create_buttons_for_sel_sets)
         else:
-            cmds.evalDeferred(self.create_buttons_for_sel_sets)
+            self._execute_deferred(self.create_buttons_for_sel_sets)
 
 
 
@@ -1788,7 +1844,7 @@ class toolbar(object):
                 cmds.warning(f"{set_group} is not empty. Please remove all sets in the setgroup first")
 
         # Retrasar la actualización de los botones
-        cmds.evalDeferred(self.create_buttons_for_sel_sets)
+        self._execute_deferred(self.create_buttons_for_sel_sets)
         if cmds.window("setCreationWindow", exists=True):
             self.open_set_creation_window()
 
@@ -1826,7 +1882,7 @@ class toolbar(object):
                     cmds.setAttr(f"{sub_sel_set}.hidden", int(not new_state))
                 
             # Retrasar la actualización de los botones
-            cmds.evalDeferred(self.create_buttons_for_sel_sets)
+            self._execute_deferred(self.create_buttons_for_sel_sets)
 
 
 
@@ -1994,10 +2050,10 @@ class toolbar(object):
 
         def adjust_offset_animation():
 
-            self.adjust_keyframes()
+            if not self._disposed and not self._anim_offset_stop.is_set():
+                self.adjust_keyframes()
 
-        while self.anim_offset_run_timer: 
-            time.sleep(interval)
+        while not self._anim_offset_stop.wait(interval):
             utils.executeDeferred(adjust_offset_animation)
 
 
@@ -2015,8 +2071,10 @@ class toolbar(object):
 
             if self.toggleAnimOffsetButtonState:
                 cmds.undoInfo(openChunk=True)
+                self._anim_offset_undo_open = True
                 cmds.iconTextButton("anim_offset_button", e=True, bgc=(0.3, 0.3, 0.3))
                 self.anim_offset_run_timer = True
+                self._anim_offset_stop.clear()
 
                 # Guarda el estado actual de Auto Key para restaurarlo al desactivar la
                 # herramienta, y lo activa mientras tanto: es lo que permite que el offset
@@ -2027,19 +2085,26 @@ class toolbar(object):
                 self.animation_offset_original_values = {}
                 self.store_keyframes()
 
-                t = threading.Thread(target=self.offset_animation_deferred, args=(0.3,))
-                t.start()
+                self._anim_offset_thread = threading.Thread(target=self.offset_animation_deferred, args=(0.3,))
+                self._anim_offset_thread.start()
             else:
-                cmds.undoInfo(closeChunk=True)
-                cmds.iconTextButton("anim_offset_button", e=True, bgc=(0.2, 0.2, 0.2))
-                self.anim_offset_run_timer = False
+                self._stop_animation_offset()
 
-                # Restaura el estado de Auto Key que habia antes de activar la herramienta.
-                if hasattr(self, '_anim_offset_prev_autokey_state'):
-                    cmds.autoKeyframe(state=self._anim_offset_prev_autokey_state)
-
-                self.animation_offset_original_values = {}
-                pass
+    def _stop_animation_offset(self):
+        self.anim_offset_run_timer = False
+        self._anim_offset_stop.set()
+        self._join_worker(self._anim_offset_thread)
+        self._anim_offset_thread = None
+        if self._anim_offset_prev_autokey_state is not None:
+            cmds.autoKeyframe(state=self._anim_offset_prev_autokey_state)
+            self._anim_offset_prev_autokey_state = None
+        if self._anim_offset_undo_open:
+            cmds.undoInfo(closeChunk=True)
+            self._anim_offset_undo_open = False
+        if cmds.iconTextButton("anim_offset_button", exists=True):
+            cmds.iconTextButton("anim_offset_button", edit=True, bgc=(0.2, 0.2, 0.2))
+        self.toggleAnimOffsetButtonState = False
+        self.animation_offset_original_values = {}
 
 
     def toggle_micro_move_button(self, *args):
@@ -2048,34 +2113,46 @@ class toolbar(object):
 
         if self.micro_move_button_state:
             cmds.undoInfo(openChunk=True)
+            self._micro_move_undo_open = True
             cmds.iconTextButton("micro_move_button", e=True, bgc=(0.3, 0.3, 0.3))
             self.micro_move_run_timer = True
+            self._micro_move_stop.clear()
+            self._micro_move_prev_tool = cmds.currentCtx()
             bar.activate_micro_move()
 
-            t = threading.Thread(target=self.micro_move_thread, args=(0.5,))
-            t.start()
+            self._micro_move_thread = threading.Thread(target=self.micro_move_thread, args=(0.5,))
+            self._micro_move_thread.start()
 
         else:
-            self.micro_move_run_timer = False
-            cmds.undoInfo(closeChunk=True)
-            current_context = cmds.currentCtx()
-            microMoveContext = "microMoveCtx"
-            microRotateContext = "microRotateCtx"
-            cmds.iconTextButton("micro_move_button", e=True, bgc=(0.2, 0.2, 0.2))
-
-            # El thread tarda en pararse así que necesitamos crear esto y así salirnos en barMod de la ejecución
-            cmds.manipMoveContext('dummyCtx')
-            cmds.setToolTo('dummyCtx')
+            self._stop_micro_move()
 
 
 
     def micro_move_thread(self, interval):
         def micro_move_run():
-            bar.activate_micro_move()
+            if not self._disposed and not self._micro_move_stop.is_set():
+                bar.activate_micro_move()
 
-        while self.micro_move_run_timer: 
-            time.sleep(interval)
+        while not self._micro_move_stop.wait(interval):
             utils.executeDeferred(micro_move_run)
+
+    def _stop_micro_move(self):
+        self.micro_move_run_timer = False
+        self._micro_move_stop.set()
+        self._join_worker(self._micro_move_thread)
+        self._micro_move_thread = None
+        if self._micro_move_prev_tool and cmds.contextInfo(self._micro_move_prev_tool, exists=True):
+            cmds.setToolTo(self._micro_move_prev_tool)
+        self._micro_move_prev_tool = None
+        for context in ('microMoveCtx', 'microRotateCtx', 'dummyCtx'):
+            if cmds.contextInfo(context, exists=True):
+                cmds.deleteUI(context, toolContext=True)
+        if self._micro_move_undo_open:
+            cmds.undoInfo(closeChunk=True)
+            self._micro_move_undo_open = False
+        if cmds.iconTextButton("micro_move_button", exists=True):
+            cmds.iconTextButton("micro_move_button", edit=True, bgc=(0.2, 0.2, 0.2))
+        self.micro_move_button_state = False
 
 
 
@@ -2085,7 +2162,8 @@ class toolbar(object):
 
     def toolbar_center_time(self, interval):
         def centerBar_run():
-            self.centrar()
+            if not self._disposed:
+                self.centrar()
 
         
         while not self._center_toolbar_stop.wait(interval):
@@ -2195,7 +2273,7 @@ class toolbar(object):
 
 
         if cmds.workspaceControl(WorkspaceName, query=True, exists=True) is False:
-            cmds.workspaceControl(WorkspaceName, dtm=["bottom", False],  ih=30, li=True, hp="fixed", tp=["east", True], floating=False, uiScript='from TheKeyMachine.core.toolbar import tb\ntb.buildUI()')
+            cmds.workspaceControl(WorkspaceName, dtm=["bottom", False],  ih=30, li=True, hp="free", tp=["east", True], floating=False, uiScript='from TheKeyMachine.core.toolbar import tb\ntb.buildUI()')
 
             cmds.workspaceControl(WorkspaceName, edit=True, dtc=( TIME_SLIDER ,"top"))
         else:
@@ -3643,7 +3721,7 @@ class toolbar(object):
         # Selector -----------------------------------------------------------------------
 
         def update_button_text():
-            if not cmds.control('selector_button', exists=True):
+            if self._disposed or not cmds.control('selector_button', exists=True):
                 return
 
             selected_objects = cmds.ls(selection=True)
@@ -3782,12 +3860,11 @@ class toolbar(object):
 
 
         # ------funciones para crear el flashing icon al crear el auto-link callback
-        global link_obj_image_timer
-        link_obj_image_timer = True
-
         link_objects_button = None 
 
         def toggle_link_obj_button_image():
+            if self._disposed or self._link_obj_stop.is_set():
+                return
             if not cmds.iconTextButton(link_objects_button, exists=True):
                 return
             
@@ -3796,19 +3873,18 @@ class toolbar(object):
             cmds.iconTextButton(link_objects_button, edit=True, image=new_image)
 
         def change_link_obj_image(interval):
-            while link_obj_image_timer: 
-                time.sleep(interval)
+            while not self._link_obj_stop.wait(interval):
                 utils.executeDeferred(toggle_link_obj_button_image)
 
         def start_link_obj_toggle_image_thread():
-            global link_obj_image_timer, t
-            link_obj_image_timer = True
-            t = threading.Thread(target=change_link_obj_image, args=(0.3,))
-            t.start()
+            self._link_obj_stop.clear()
+            self._link_obj_thread = threading.Thread(target=change_link_obj_image, args=(0.3,))
+            self._link_obj_thread.start()
 
         def stop_link_obj_toggle_image_thread():
-            global link_obj_image_timer
-            link_obj_image_timer = False
+            self._link_obj_stop.set()
+            self._join_worker(self._link_obj_thread)
+            self._link_obj_thread = None
 
 
         # Añade el auto-link callback
@@ -3820,11 +3896,12 @@ class toolbar(object):
         def remove_link_objects_callback(*args):
             stop_link_obj_toggle_image_thread()
             keyTools.remove_link_obj_callbacks()
-            QTimer.singleShot(800, restore_link_objects_image)
+            QTimer.singleShot(800, lambda: self._run_if_active(restore_link_objects_image))
 
 
         def restore_link_objects_image():
-            cmds.iconTextButton(link_objects_button, edit=True, image=media.link_objects_image)
+            if cmds.iconTextButton(link_objects_button, exists=True):
+                cmds.iconTextButton(link_objects_button, edit=True, image=media.link_objects_image)
 
 
         global link_checkbox_state
@@ -4308,6 +4385,4 @@ class toolbar(object):
         update_tooltips()
 
 
-if 'tb' in globals() and hasattr(tb, 'cleanup'):
-    tb.cleanup()
 tb = toolbar()

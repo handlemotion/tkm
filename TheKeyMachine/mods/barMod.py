@@ -510,13 +510,43 @@ def selectHierarchy():
 
 # ---------------------------------------------------  TEMP PIVOT ------------------------------------------------------#
 
+attribute_callback_id = None
+time_callback_id = None
+temp_pivot_script_job = None
+temp_pivot_undo_chunks = 0
+temp_pivot_previous_context = None
 
-def create_temp_pivot(use_saved_position=False, *args):
 
-
+def remove_temp_pivot_callbacks():
+    global attribute_callback_id, time_callback_id
+    for callback_id in (attribute_callback_id, time_callback_id):
+        if callback_id is not None:
+            try:
+                om.MMessage.removeCallback(callback_id)
+            except RuntimeError:
+                pass
     attribute_callback_id = None
     time_callback_id = None
-    process_callback = True
+
+
+def dispose_temp_pivot():
+    global temp_pivot_script_job, temp_pivot_undo_chunks, temp_pivot_previous_context
+    remove_temp_pivot_callbacks()
+    if temp_pivot_script_job is not None and cmds.scriptJob(exists=temp_pivot_script_job):
+        cmds.scriptJob(kill=temp_pivot_script_job, force=True)
+    temp_pivot_script_job = None
+    if cmds.objExists("tkm_temp_pivot"):
+        cmds.delete("tkm_temp_pivot")
+    while temp_pivot_undo_chunks:
+        cmds.undoInfo(closeChunk=True)
+        temp_pivot_undo_chunks -= 1
+    if temp_pivot_previous_context and cmds.contextInfo(temp_pivot_previous_context, exists=True):
+        cmds.setToolTo(temp_pivot_previous_context)
+    temp_pivot_previous_context = None
+
+
+def create_temp_pivot(use_saved_position=False, *args):
+    global temp_pivot_script_job, temp_pivot_undo_chunks, temp_pivot_previous_context
 
     seleccion = cmds.ls(selection=True)
 
@@ -529,12 +559,17 @@ def create_temp_pivot(use_saved_position=False, *args):
         cmds.warning("Temp pivot already exists. Please unselect the current object to remove it.")
         return
 
+    dispose_temp_pivot()
+
     # Variables globales
     temp_pivot_relative_data = {}
 
 
     def get_temp_pivot_relation():
+        global temp_pivot_undo_chunks, temp_pivot_previous_context
+        temp_pivot_previous_context = cmds.currentCtx()
         cmds.undoInfo(openChunk=True)
+        temp_pivot_undo_chunks += 1
 
         matrix_file_path = general.get_temp_pivot_data_file()
         
@@ -548,6 +583,7 @@ def create_temp_pivot(use_saved_position=False, *args):
 
         # 1. Crear el nodo transform
         cmds.undoInfo(openChunk=True)
+        temp_pivot_undo_chunks += 1
         temp_pivot_obj = cmds.createNode('transform', name="tkm_temp_pivot")
         cmds.parent("tkm_temp_pivot", "TheKeyMachine")
         
@@ -694,19 +730,6 @@ def create_temp_pivot(use_saved_position=False, *args):
 
 
 
-    def remove_callbacks_link():
-        global attribute_callback_id, time_callback_id
-        try:
-            if attribute_callback_id:
-                om.MMessage.removeCallback(attribute_callback_id)
-                attribute_callback_id = None
-            if time_callback_id:
-                om.MMessage.removeCallback(time_callback_id)
-                time_callback_id = None
-        except Exception as e:
-            print(f"Error removing callback: {e}")
-
-
     def attribute_callback_function(msg, plug, otherPlug, clientData):
         global process_callback
         
@@ -752,8 +775,10 @@ def create_temp_pivot(use_saved_position=False, *args):
 
 
     def temp_pivot_scriptJob_SelectionChanged():
+        global temp_pivot_script_job
 
         if not cmds.objExists("tkm_temp_pivot"):
+            temp_pivot_script_job = None
             return
         else:
 
@@ -769,16 +794,13 @@ def create_temp_pivot(use_saved_position=False, *args):
             update_temp_pivot_transform_in_file(position, rotation)
 
             # Remover los callbacks y eliminar los objetos
-            remove_callbacks_link()
-            cmds.delete("tkm_temp_pivot")
+            temp_pivot_script_job = None
+            dispose_temp_pivot()
             cmds.delete(locator)
-
-            cmds.undoInfo(closeChunk=True)
-            cmds.undoInfo(closeChunk=True)
 
 
         
-    cmds.scriptJob(runOnce = True, killWithScene = True,  event =('SelectionChanged',  temp_pivot_scriptJob_SelectionChanged))
+    temp_pivot_script_job = cmds.scriptJob(runOnce=True, killWithScene=True, event=('SelectionChanged', temp_pivot_scriptJob_SelectionChanged))
 
 
 
@@ -2192,6 +2214,7 @@ micro_move_selected_objects = []
 micro_move_callback_ids = []
 micro_move_drivers = []
 micro_move_animation_data = {}
+micro_move_undo_open = False
 
 def micro_move_copy_animation(object_name, attributes):
     global micro_move_animation_data
@@ -2246,9 +2269,10 @@ def add_micro_move_callback(object_name):
 
 
 def micro_move_pre_drag(*args):
-    global micro_move_selected_objects, micro_move_drivers
+    global micro_move_selected_objects, micro_move_drivers, micro_move_undo_open
 
     cmds.undoInfo(openChunk=True)
+    micro_move_undo_open = True
 
     micro_move_selected_objects = cmds.ls(selection=True)
     if not micro_move_selected_objects:
@@ -2289,7 +2313,7 @@ def micro_move_pre_drag(*args):
 
 
 def micro_move_post_drag():
-    global micro_move_selected_objects, micro_move_animation_data
+    global micro_move_selected_objects, micro_move_animation_data, micro_move_undo_open
 
     for selected in micro_move_selected_objects:
         duplicate_name = f"{selected}_connect"
@@ -2320,13 +2344,18 @@ def micro_move_post_drag():
     micro_move_animation_data.clear()
     cmds.select(micro_move_selected_objects)
 
-    cmds.undoInfo(closeChunk=True)
+    if micro_move_undo_open:
+        cmds.undoInfo(closeChunk=True)
+        micro_move_undo_open = False
 
 
 def remove_micro_move_callbacks():
     global micro_move_callback_ids
-    for id in micro_move_callback_ids:
-        om.MMessage.removeCallback(id)
+    for callback_id in micro_move_callback_ids:
+        try:
+            om.MMessage.removeCallback(callback_id)
+        except RuntimeError:
+            pass
     micro_move_callback_ids = []
 
 def micro_move_post_drag_deferred(*args):
@@ -2345,6 +2374,7 @@ micro_rotate_selected_objects = []
 micro_rotate_drivers = []
 micro_rotate_connects = []
 micro_rotate_animation_data = {}
+micro_rotate_undo_open = False
 
 def micro_rotate_copy_animation(object_name, attributes):
     global micro_rotate_animation_data
@@ -2441,11 +2471,13 @@ def micro_rotate_pack_funtion():
 
 
 def micro_rotate_pre_drag(*args):
+    global micro_rotate_undo_open
     cmds.undoInfo(openChunk=True)
+    micro_rotate_undo_open = True
     micro_rotate_pack_funtion()
 
 def micro_rotate_post_deferred():
-    global micro_rotate_selected_objects, micro_rotate_animation_data
+    global micro_rotate_selected_objects, micro_rotate_animation_data, micro_rotate_undo_open
 
     for selected in micro_rotate_selected_objects:
         duplicate_name = f"{selected}_connect"
@@ -2477,15 +2509,39 @@ def micro_rotate_post_deferred():
 
     remove_micro_rotate_callbacks()
     micro_rotate_animation_data.clear()
-    cmds.undoInfo(closeChunk=True)
+    if micro_rotate_undo_open:
+        cmds.undoInfo(closeChunk=True)
+        micro_rotate_undo_open = False
     cmds.select(micro_rotate_selected_objects)
 
 
 def remove_micro_rotate_callbacks():
     global micro_rotate_callback_ids
-    for id in micro_rotate_callback_ids:
-        om.MMessage.removeCallback(id)
+    for callback_id in micro_rotate_callback_ids:
+        try:
+            om.MMessage.removeCallback(callback_id)
+        except RuntimeError:
+            pass
     micro_rotate_callback_ids = []
+
+
+def cleanup_owned_resources():
+    global micro_move_undo_open, micro_rotate_undo_open
+    remove_temp_pivot_callbacks()
+    remove_micro_move_callbacks()
+    remove_micro_rotate_callbacks()
+    for selected in set(micro_move_selected_objects + micro_rotate_selected_objects):
+        for suffix in ('_connect', '_driver'):
+            node = selected + suffix
+            if cmds.objExists(node):
+                cmds.delete(node)
+    if micro_move_undo_open:
+        cmds.undoInfo(closeChunk=True)
+        micro_move_undo_open = False
+    if micro_rotate_undo_open:
+        cmds.undoInfo(closeChunk=True)
+        micro_rotate_undo_open = False
+    dispose_temp_pivot()
 
 def micro_rotate_post_drag(*args):
     cmds.evalDeferred(micro_rotate_post_deferred)

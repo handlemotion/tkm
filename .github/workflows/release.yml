@@ -52,7 +52,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           prerelease_args=()
-          if [[ "$PRERELEASE" == "true" ]]; then
+          if [[ "$PRERELEASE" == "true" || "$TAG" == *-* ]]; then
             prerelease_args+=(--prerelease)
           fi
           gh release create "$TAG" \
