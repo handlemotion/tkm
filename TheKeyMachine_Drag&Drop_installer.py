@@ -52,7 +52,7 @@ except ImportError:
 
 
 
-TKM_VERSION = "Beta 0.1.5 / Build 307"
+TKM_VERSION = "Beta 0.1.6 / Build 308"
 
 
 def get_screen_resolution():
@@ -154,6 +154,7 @@ def update_maya_env():
 def onMayaDroppedPythonFile(*args):
     QApplication.processEvents()
     utils.executeDeferred(TheKeyMachine_installer)
+    sys.modules.pop(__name__, None)
 
 def install(button, checkbox, tkm_version, window):
     screen_width, screen_height = get_screen_resolution()

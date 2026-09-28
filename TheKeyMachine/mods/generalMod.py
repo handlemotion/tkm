@@ -102,11 +102,11 @@ USER_FOLDER_PATH = config["USER_FOLDER_PATH"]
 # ------------------------------------------------------------------------
 
 def get_thekeymachine_version():
-    thekeymachine_version = "0.1.5"
+    thekeymachine_version = "0.1.6"
     return thekeymachine_version
 
 def get_thekeymachine_build_version():
-    thekeymachine_build_version = "307"
+    thekeymachine_build_version = "308"
     return thekeymachine_build_version
 
 def get_thekeymachine_codename():
