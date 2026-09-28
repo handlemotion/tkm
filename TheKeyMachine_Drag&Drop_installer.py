@@ -52,7 +52,13 @@ except ImportError:
 
 
 
-TKM_VERSION = "Beta 0.1.6 / Build 308"
+def get_tkm_version():
+    version_path = os.path.join(os.path.dirname(__file__), "TheKeyMachine", "data", "version.txt")
+    with open(version_path, "r", encoding="ascii") as version_file:
+        return version_file.read().strip()
+
+
+TKM_VERSION = "Beta {}".format(get_tkm_version())
 
 
 def get_screen_resolution():

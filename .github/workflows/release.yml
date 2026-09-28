@@ -1,53 +1,44 @@
 name: Release
-run-name: Release ${{ inputs.tag }}
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Stable patch tag (for example, v0.1.6)
-        required: true
-        type: string
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Open or publish the release
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
       - uses: actions/checkout@v6
+        if: steps.release.outputs.release_created == 'true'
         with:
-          fetch-depth: 0
+          ref: ${{ steps.release.outputs.tag_name }}
           persist-credentials: false
-      - name: Verify requested tag and embedded versions
+      - name: Verify and package released commit
+        if: steps.release.outputs.release_created == 'true'
         env:
-          TAG: ${{ inputs.tag }}
-        run: python3 tools/release.py verify --tag "$TAG"
-      - name: Package installer payload
-        env:
-          TAG: ${{ inputs.tag }}
-        run: python3 tools/release.py package --tag "$TAG" --output-dir dist
-      - name: Ensure the requested tag is new
-        env:
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.release.outputs.tag_name }}
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag already exists: $TAG" >&2
-            exit 1
-          fi
-      - name: Create tag and GitHub release
+          python3 tools/release.py verify --tag "$TAG"
+          python3 tools/release.py package --tag "$TAG" --output-dir dist
+      - name: Upload release assets
+        if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.release.outputs.tag_name }}
         run: |
-          gh release create "$TAG" \
+          gh release upload "$TAG" \
             "dist/TheKeyMachine-$TAG.zip" \
-            "dist/TheKeyMachine-$TAG.zip.sha256" \
-            --generate-notes \
-            --target "$GITHUB_SHA" \
-            --title "$TAG"
+            "dist/TheKeyMachine-$TAG.zip.sha256"

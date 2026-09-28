@@ -1,7 +1,5 @@
 TheKeyMachine - Animation toolset for Maya animators
 -------------------------------------------------------------------------------
-Beta v0.1.6
-Build: 308 - 28 September 2026
 Series: Gort
 
 Independent GPL-3.0 continuation of the original TheKeyMachine project.
@@ -22,7 +20,7 @@ How to install:
    the single TheKeyMachine code folder while preserving its configuration and
    the separate TheKeyMachine_user_data folder.
 3. Start the Maya version you want to install into.
-4. Drag the versioned installer, such as TheKeyMachine_Installer_v0_1_6.py,
+4. Drag the versioned installer, such as TheKeyMachine_Installer_vX_Y_Z.py,
    into the Maya viewport.
 5. Accept the GPL-3.0 license and click Install TheKeyMachine.
 6. Restart Maya so the updated Maya.env is loaded.

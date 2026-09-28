@@ -25,53 +25,14 @@ TAG_PATTERN = re.compile(
     r"v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
 )
 INSTALLER_SOURCE = "TheKeyMachine_Drag&Drop_installer.py"
+VERSION_FILE = "TheKeyMachine/data/version.txt"
 
 
-def _unique_match(path: str, pattern: str) -> tuple[str, ...]:
-    matches = re.findall(pattern, (ROOT / path).read_text(encoding="utf-8"), re.MULTILINE)
-    if len(matches) != 1:
-        raise ValueError(f"Expected one version declaration in {path}, found {len(matches)}")
-    match = matches[0]
-    return match if isinstance(match, tuple) else (match,)
-
-
-def embedded_version() -> tuple[str, str]:
-    installer = _unique_match(
-        "TheKeyMachine_Drag&Drop_installer.py",
-        r'^TKM_VERSION\s*=\s*"Beta ([0-9]+\.[0-9]+\.[0-9]+) / Build ([0-9]+)"\s*$',
-    )
-    runtime = (
-        _unique_match(
-            "TheKeyMachine/mods/generalMod.py",
-            r'^\s*thekeymachine_version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$',
-        )[0],
-        _unique_match(
-            "TheKeyMachine/mods/generalMod.py",
-            r'^\s*thekeymachine_build_version\s*=\s*"([0-9]+)"\s*$',
-        )[0],
-    )
-    readme = _unique_match(
-        "README.md",
-        r"^\*\*Beta ([0-9]+\.[0-9]+\.[0-9]+) / Build ([0-9]+)\s+-",
-    )
-    install_notes = (
-        _unique_match("how_to_install.txt", r"^Beta v([0-9]+\.[0-9]+\.[0-9]+)\s*$",)[0],
-        _unique_match("how_to_install.txt", r"^Build:\s*([0-9]+)\b")[0],
-    )
-
-    declarations = {
-        "installer": installer,
-        "runtime": runtime,
-        "README": readme,
-        "installation notes": install_notes,
-    }
-    if len(set(declarations.values())) != 1:
-        details = ", ".join(
-            f"{name}={version}/build {build}"
-            for name, (version, build) in declarations.items()
-        )
-        raise ValueError(f"Embedded versions do not match: {details}")
-    return installer
+def release_version() -> str:
+    version = (ROOT / VERSION_FILE).read_text(encoding="ascii").strip()
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError(f"Invalid version in {VERSION_FILE}: {version!r}")
+    return version
 
 
 def tracked_payload() -> list[Path]:
@@ -84,6 +45,8 @@ def tracked_payload() -> list[Path]:
     files = [ROOT / name.decode("utf-8") for name in result.stdout.split(b"\0") if name]
     tracked = {path.relative_to(ROOT).as_posix() for path in files}
     missing = [path for path in PAYLOAD_PATHS if path != "TheKeyMachine" and path not in tracked]
+    if VERSION_FILE not in tracked:
+        missing.append(VERSION_FILE)
     if missing or not any(path.startswith("TheKeyMachine/") for path in tracked):
         raise ValueError(f"Missing tracked payload: {', '.join(missing or ['TheKeyMachine'])}")
     for path in files:
@@ -92,24 +55,24 @@ def tracked_payload() -> list[Path]:
     return sorted(files, key=lambda path: path.relative_to(ROOT).as_posix())
 
 
-def verify(tag: str | None = None) -> tuple[str, str, list[Path]]:
-    version, build = embedded_version()
+def verify(tag: str | None = None) -> tuple[str, list[Path]]:
+    version = release_version()
     if tag:
         match = TAG_PATTERN.fullmatch(tag)
         if not match:
             raise ValueError("Tag must look like v1.2.3")
         if match.group("version") != version:
-            raise ValueError(f"Tag {tag} does not match embedded version {version}")
+            raise ValueError(f"Tag {tag} does not match release version {version}")
 
     files = tracked_payload()
     for path in files:
         if path.suffix == ".py":
             ast.parse(path.read_bytes(), filename=str(path.relative_to(ROOT)))
-    return version, build, files
+    return version, files
 
 
 def package(output_dir: Path, tag: str | None) -> tuple[Path, Path, str]:
-    version, _, files = verify(tag)
+    version, files = verify(tag)
     tag = tag or f"v{version}"
     output_dir.mkdir(parents=True, exist_ok=True)
     archive = output_dir / f"TheKeyMachine-{tag}.zip"
@@ -148,8 +111,8 @@ def main() -> int:
 
     try:
         if args.command == "verify":
-            version, build, files = verify(args.tag)
-            print(f"Verified Beta {version} / Build {build} across {len(files)} payload files")
+            version, files = verify(args.tag)
+            print(f"Verified Beta {version} across {len(files)} payload files")
         else:
             archive, checksum, digest = package(args.output_dir, args.tag)
             print(f"Created {archive}")

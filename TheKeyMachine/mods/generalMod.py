@@ -102,12 +102,9 @@ USER_FOLDER_PATH = config["USER_FOLDER_PATH"]
 # ------------------------------------------------------------------------
 
 def get_thekeymachine_version():
-    thekeymachine_version = "0.1.6"
-    return thekeymachine_version
-
-def get_thekeymachine_build_version():
-    thekeymachine_build_version = "308"
-    return thekeymachine_build_version
+    version_path = os.path.join(os.path.dirname(__file__), "../data/version.txt")
+    with open(os.path.normpath(version_path), "r", encoding="ascii") as version_file:
+        return version_file.read().strip()
 
 def get_thekeymachine_codename():
     thekeymachine_codename = "Gort"
