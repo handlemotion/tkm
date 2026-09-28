@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "dd80ce1c9478f2611c46540e1c665353296a5139",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "version-file": "TheKeyMachine/data/version.txt",
+      "initial-version": "0.1.6",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "chore",
+          "section": "Maintenance"
+        }
+      ]
+    }
+  }
+}

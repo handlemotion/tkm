@@ -871,7 +871,6 @@ def donate_window():
 
 
     TheKeyMachine_version = general.get_thekeymachine_version()
-    TheKeyMachine_build_version = general.get_thekeymachine_build_version()
 
 
     if screen_width == 3840:
@@ -1010,12 +1009,11 @@ def about_window():
         image_label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
 
     TheKeyMachine_version = general.get_thekeymachine_version()
-    TheKeyMachine_build_version = general.get_thekeymachine_build_version()
 
     if screen_width == 3840:
-        label2 = QtWidgets.QLabel("<span style='font-size: 16px; color:#cccccc'>Animation toolset for Maya Animators<br><br><br></span><br><span style='font-size: 20px; color:#cccccc'><b>Version:&nbsp;&nbsp;</b></span><span style='font-size: 20px; color:#86CDAD'>beta v{}</span><span style='font-size: 20px; color:#cccccc'><b>&nbsp;&nbsp;&nbsp;&nbsp;Build:&nbsp;&nbsp;</b></span><span style='font-size: 20px; color:#86CDAD'>{}</span><br><br><br>".format(TheKeyMachine_version, TheKeyMachine_build_version))
+        label2 = QtWidgets.QLabel("<span style='font-size: 16px; color:#cccccc'>Animation toolset for Maya Animators<br><br><br></span><br><span style='font-size: 20px; color:#cccccc'><b>Version:&nbsp;&nbsp;</b></span><span style='font-size: 20px; color:#86CDAD'>beta v{}</span><br><br><br>".format(TheKeyMachine_version))
     else:
-        label2 = QtWidgets.QLabel("<span style='font-size: 12px; color:#cccccc'>Animation toolset for Maya Animators<br><br><br></span><br><span style='font-size: 14px; color:#cccccc'><b>Version:&nbsp;&nbsp;</b></span><span style='font-size: 14px; color:#86CDAD'>beta v{}</span><span style='font-size: 14px; color:#cccccc'><b>&nbsp;&nbsp;&nbsp;&nbsp;Build:&nbsp;&nbsp;</b></span><span style='font-size: 14px; color:#86CDAD'>{}</span><br><br><br>".format(TheKeyMachine_version, TheKeyMachine_build_version))
+        label2 = QtWidgets.QLabel("<span style='font-size: 12px; color:#cccccc'>Animation toolset for Maya Animators<br><br><br></span><br><span style='font-size: 14px; color:#cccccc'><b>Version:&nbsp;&nbsp;</b></span><span style='font-size: 14px; color:#86CDAD'>beta v{}</span><br><br><br>".format(TheKeyMachine_version))
 
     label2.setAlignment(QtCore.Qt.AlignCenter)
     layout.addWidget(label2, 0, QtCore.Qt.AlignHCenter)
