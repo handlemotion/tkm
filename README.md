@@ -1,59 +1,45 @@
+# TheKeyMachine - Animation toolset for Maya animators
 
+<img width="269px" src="./TheKeyMachine/data/img/tkm_logo_small.png" alt="TheKeyMachine logo" />
 
-## ⚠️ Project Status: No Longer in Active Development
+TheKeyMachine (TKM) is an open source animation toolset for Autodesk Maya, originally developed by Rodrigo Torres.
 
-Thank you to everyone who has used, supported, and donated to **The Key Machine** over the years. 
+This repository is an independently maintained continuation of the original GPL-3.0 project. It is not endorsed or certified by Autodesk, and independent maintenance does not imply endorsement by the upstream project.
 
-Unfortunately, due to the lack of financial support needed to sustain server costs and development time, this project is no longer in active development. Furthermore, the official website and domain (`thekeymachine.xyz`) will be permanently shut down around **mid-September 2026**.
+## Current release
 
-**What does this mean for the tools?**
-* There will be no further updates, bug fixes, or new features added by the original developer.
-* The source code will remain freely available here on GitHub under the **GPL-3.0 License**.
-* You are completely free to fork this repository, modify the code, and keep the project alive or adapt it to your own studio's pipeline.
+**Beta 0.1.5 / Build 307 - 28 September 2026**
 
-A huge thank you to the animation community for using the toolset, and a special shout-out to the few who contributed with donations. Your support meant a lot!
+This release adds installer support for the Python 3.13 runtime used by Maya 2027, keeps the existing Maya 2022-2025 and Linux fallbacks, and prevents duplicate TheKeyMachine blocks in `Maya.env`.
 
-Happy animating! 🎬
+Maya 2027 on Windows 11 and macOS Tahoe 26.6.2 or newer is the current development target. This is not a claim of complete compatibility or Autodesk certification. Full installation and tool testing on those platforms is still required for a verified support claim. Use Maya's bundled Python, PySide, and shiboken packages; do not install replacement Qt bindings into Maya.
 
+## Installation
 
-<br><br><br>
+1. Download or clone the complete repository and keep `TheKeyMachine_Drag&Drop_installer.py` beside the `TheKeyMachine` folder.
+2. If upgrading, back up `TheKeyMachine_user_data`, then uninstall the existing code or remove only the old `TheKeyMachine` code folder from Maya's scripts directory. Keep `TheKeyMachine_user_data` so custom scripts, preferences, selection sets, and saved animation data remain available.
+3. Start the Maya version you want to install into.
+4. Drag `TheKeyMachine_Drag&Drop_installer.py` into the Maya viewport.
+5. Accept the GPL-3.0 license and click **Install TheKeyMachine**.
+6. Restart Maya so its updated `Maya.env` is loaded.
 
+The installer copies the code into Maya's user scripts directory and adds a marked `XBMLANGPATH` block to that Maya version's `Maya.env`. Re-running the environment update does not add the block again, and unrelated `Maya.env` content is preserved. Installation does not require the retired upstream website or registration service.
 
-<img width="269px" src="./TheKeyMachine/data/img/tkm_logo_small.png" />
+For a studio installation, configure `INSTALL_PATH` and `USER_FOLDER_PATH` in `TheKeyMachine/data/config/config.json`. Keep the installed code separate from `TheKeyMachine_user_data` and make both locations available on Maya's Python path where required.
 
-# TheKeyMachine - Animation tool for Maya Animators
+## Features
 
-TheKeyMachine (TKM) is a open source toolset specially designed for 3D animators working with Autodesk Maya.
+- Animation tools including Isolate, Snap, Reset, Counter, Temp Pivot, FollowCam, Anim Offset, Copy and Paste Animation, Copy and Paste World Position, and an advanced curve editor
+- Selection Manager for selection sets
+- Tween and Blend sliders
+- Customizable tool and script menus
 
-TheKeyMachine offers advanced animation tools that significantly speed up daily tasks and workflows for animators.
+<img src="./TheKeyMachine/data/img/toolbar_example.png" alt="TheKeyMachine toolbar" />
 
-It currently works with Maya versions 2022, 2023, 2024 and 2025 on Windows, Linux, and macOS.
+<img width="200px" src="./TheKeyMachine/data/img/install_example.png" alt="TheKeyMachine installer" />
 
-Some of the available features include:
+## License and upstream status
 
--Simple and fast installer
--Advanced tools like Isolate, Snap, Reset, Counter, Temp Pivot, FollowCam, Anim Offset, Copy and Paste Animation, Copy and Paste World Position, advanced curve editor, customizable menus, and more
--Selection Manager (Selection Sets)
--Advanced sliders for Tween and Blend
-And many others
+TheKeyMachine remains licensed under the [GNU General Public License v3.0](./license_gpl-3.0.txt). Preserve the original author attribution and GPL terms when modifying or redistributing it.
 
-TKM is in the beta phase and is being developed by <b>Rodrigo Torres</b> (<a href="https://www.rodritorres.com">rodritorres.com</a>).<br><br>
-
-<a href="https://www.thekeymachine.xyz">TheKeyMachine.xyz</a>
-
-
-<img src="./TheKeyMachine/data/img/toolbar_example.png" />
-
-<img width="200px" src="./TheKeyMachine/data/img/install_example.png" />
-
-
-<br><br><br>
-#  A note on forks and derivative projects
-TheKeyMachine is released under the GPL-3.0 license, which means anyone is free to fork, modify, and redistribute the code. That's by design, and I welcome community contributions and forks.
-
-However, forks and derivative projects are independent works maintained by their respective authors. I do not review, endorse, or take responsibility for the content of third-party forks, including any visual design, UI elements, or features they may add. 
-If a fork's name, branding, or description implies official affiliation with TheKeyMachine or myself, that affiliation is not accurate unless explicitly stated here.
-
-If you're evaluating a fork, please check its own repository and license notices directly.
-
-<br><br><br>
+The original project announced the end of active upstream development and the shutdown of its website. This fork is maintained independently and does not depend on that website for installation or normal operation.

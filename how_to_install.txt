@@ -1,33 +1,35 @@
+TheKeyMachine - Animation toolset for Maya animators
+-------------------------------------------------------------------------------
+Beta v0.1.5
+Build: 307 - 28 September 2026
+Series: Gort
 
-        TheKeyMachine - Animation toolset for Maya Animators
-        -----------------------------------------------------------------------------------------
-        Beta v. 0.1.4
-        Build: 306 - 26 March 2025
-        Series: Gort
-	For Maya 2022, 2023, 2024, 2025
-        -----------------------------------------------------------------------------------------
+Independent GPL-3.0 continuation of the original TheKeyMachine project.
 
-         How to install(*):
+Installer targets:
+- Existing Maya 2022, 2023, 2024, and 2025 paths are preserved.
+- Maya 2027 with its bundled Python 3.13, PySide6, and shiboken6 is supported
+  by the installer.
+- Windows 11 and macOS Tahoe 26.6.2 or newer are Maya 2027 development
+  targets. Full compatibility has not yet been verified or Autodesk-certified.
 
-         - Unzip TheKeyMachine_installer.zip 
-         - Drag & drop TheKeyMachine_drag&drop_installer.py into the Maya viewport.
-         - You don't need to copy any files anywhere; the installer will copy the files for you.
-           Once installation finishes a toolbar should show up in the bottom area of Maya.
-         - Click the padlock icon in the left side and register TheKeyMachine
+How to install:
 
+1. Download or clone the complete repository. Keep
+   TheKeyMachine_Drag&Drop_installer.py beside the TheKeyMachine folder.
+2. If upgrading, back up TheKeyMachine_user_data. Uninstall the old code or
+   remove only the old TheKeyMachine code folder from Maya's scripts directory.
+   Keep TheKeyMachine_user_data.
+3. Start the Maya version you want to install into.
+4. Drag TheKeyMachine_Drag&Drop_installer.py into the Maya viewport.
+5. Accept the GPL-3.0 license and click Install TheKeyMachine.
+6. Restart Maya so the updated Maya.env is loaded.
 
+The installer preserves unrelated Maya.env content and writes its marked
+XBMLANGPATH block only once. No upstream website or registration is required.
 
-         (*) MacOS users please follow this installation process:
-         https://thekeymachine.gitbook.io/base/getting-started/how-to-install-it/macos-install
+For studio installs, configure INSTALL_PATH and USER_FOLDER_PATH in
+TheKeyMachine/data/config/config.json. Keep installed code separate from
+TheKeyMachine_user_data.
 
-
-         For Centralized / Studio install please refer to:
-         https://thekeymachine.gitbook.io/base/getting-started/how-to-install-it/studio-install
-
-         
-
-        -----------------------------------------------------------------------------------------
-        If you need help visit:
-        https://thekeymachine.gitbook.io/base/
-        -----------------------------------------------------------------------------------------
-        
+This fork is independently maintained and does not imply upstream endorsement.
