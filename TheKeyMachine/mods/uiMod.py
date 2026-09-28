@@ -200,6 +200,32 @@ def customGraph_filter_mods(*args):
 
 
 
+TKM_ENV_START = b"# THIS LINE IS HERE FOR UNINSTALLING PURPOSES, PLEASE DO NOT TOUCH. START OF THEKEYMACHINE CODE"
+TKM_ENV_END = b"# END OF THEKEYMACHINE CODE"
+
+
+def _remove_tkm_env_blocks(data):
+    prefix = b"\xef\xbb\xbf" if data.startswith(b"\xef\xbb\xbf") else b""
+    output = []
+    block = []
+    for line in data[len(prefix):].splitlines(keepends=True):
+        marker = line.rstrip(b"\r\n")
+        if not block:
+            if marker == TKM_ENV_START:
+                block = [line]
+            else:
+                output.append(line)
+        elif marker == TKM_ENV_END:
+            block = []
+        elif marker == TKM_ENV_START:
+            output.extend(block)
+            block = [line]
+        else:
+            block.append(line)
+    output.extend(block)
+    return prefix + b"".join(output)
+
+
 def uninstall():
     # Muestra un cuadro de diálogo para confirmar la desinstalación
     result = cmds.confirmDialog(
@@ -213,8 +239,7 @@ def uninstall():
 
     if result == 'Uninstall':
         try:
-            # Desactiva el thread para centrar la toolbar 
-            run_centerToolbar = False
+            tb.tb.cleanup()
 
             # Definiendo las rutas
             user_app_dir = cmds.internalVar(userAppDir=True)
@@ -253,18 +278,12 @@ def uninstall():
 
             # Borra las líneas de código en Maya.env
             if os.path.exists(env_file_path):
-                with open(env_file_path, 'r') as f:
-                    lines = f.readlines()
-
-                with open(env_file_path, 'w') as f:
-                    in_tkm_code_block = False
-                    for line in lines:
-                        if line.strip() == "# THIS LINE IS HERE FOR UNINSTALLING PURPOSES, PLEASE DO NOT TOUCH. START OF THEKEYMACHINE CODE":
-                            in_tkm_code_block = True
-                        elif line.strip() == "# END OF THEKEYMACHINE CODE":
-                            in_tkm_code_block = False
-                        elif not in_tkm_code_block:
-                            f.write(line)
+                with open(env_file_path, 'rb') as f:
+                    env_data = f.read()
+                updated_env_data = _remove_tkm_env_blocks(env_data)
+                if updated_env_data != env_data:
+                    with open(env_file_path, 'wb') as f:
+                        f.write(updated_env_data)
             else:
                 cmds.warning('Maya.env file does not exist.')
 

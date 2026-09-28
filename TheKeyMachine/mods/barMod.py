@@ -445,73 +445,14 @@ def isolate_master():
             cmds.select(root_object, add=True)  # Añadir el objeto raíz a la selección
         
 
-        # Fix para activar/desactivar el icono isolate que en maya 2024 esta en otro layout
-
-        maya_version = cmds.about(version=True)
-
-
         if currentState == 0:
             cmds.isolateSelect(currentPanel, state=1)
             cmds.isolateSelect(currentPanel, addSelected=True)
-
-
-            # Fix para activar y desactivar el icono de maya del isolate
-            if currentPanel == "modelPanel1":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel1|modelPanel1|modelEditorIconBar|flowLayout3|formLayout24|IsolateSelectedBtn", edit=True, value=True)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel1|modelPanel1|modelEditorIconBar|flowLayout3|formLayout25|IsolateSelectedBtn", edit=True, value=True)
-
-            elif currentPanel == "modelPanel2":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel2|modelPanel2|modelEditorIconBar|flowLayout4|formLayout31|IsolateSelectedBtn", edit=True, value=True)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel2|modelPanel2|modelEditorIconBar|flowLayout4|formLayout32|IsolateSelectedBtn", edit=True, value=True)
-
-            elif currentPanel == "modelPanel3":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel3|modelPanel3|modelEditorIconBar|flowLayout5|formLayout38|IsolateSelectedBtn", edit=True, value=True)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel3|modelPanel3|modelEditorIconBar|flowLayout5|formLayout39|IsolateSelectedBtn", edit=True, value=True)
-
-            elif currentPanel == "modelPanel4":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel4|modelPanel4|modelEditorIconBar|flowLayout6|formLayout45|IsolateSelectedBtn", edit=True, value=True)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel4|modelPanel4|modelEditorIconBar|flowLayout6|formLayout46|IsolateSelectedBtn", edit=True, value=True)
-
-
+            mel.eval('enableIsolateSelect "{}" true;'.format(currentPanel))
         else:
             cmds.isolateSelect(currentPanel, state=0)
             cmds.isolateSelect(currentPanel, removeSelected=True)
-
-
-             # Fix para activar y desactivar el icono de maya del isolate
-            if currentPanel == "modelPanel1":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel1|modelPanel1|modelEditorIconBar|flowLayout3|formLayout24|IsolateSelectedBtn", edit=True, value=False)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel1|modelPanel1|modelEditorIconBar|flowLayout3|formLayout25|IsolateSelectedBtn", edit=True, value=False)
-
-            elif currentPanel == "modelPanel2":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel2|modelPanel2|modelEditorIconBar|flowLayout4|formLayout31|IsolateSelectedBtn", edit=True, value=False)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel2|modelPanel2|modelEditorIconBar|flowLayout4|formLayout32|IsolateSelectedBtn", edit=True, value=False)
-
-            elif currentPanel == "modelPanel3":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel3|modelPanel3|modelEditorIconBar|flowLayout5|formLayout38|IsolateSelectedBtn", edit=True, value=False)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel3|modelPanel3|modelEditorIconBar|flowLayout5|formLayout39|IsolateSelectedBtn", edit=True, value=False)
-
-            elif currentPanel == "modelPanel4":
-                if maya_version == "2024" or maya_version == "2025":
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel4|modelPanel4|modelEditorIconBar|flowLayout6|formLayout45|IsolateSelectedBtn", edit=True, value=False)
-                else:
-                    cmds.iconTextCheckBox("MainPane|viewPanes|modelPanel4|modelPanel4|modelEditorIconBar|flowLayout6|formLayout46|IsolateSelectedBtn", edit=True, value=False)
-
-                
+            mel.eval('enableIsolateSelect "{}" false;'.format(currentPanel))
     # Restaurar la selección previa
     if current_selection:
         cmds.select(current_selection)

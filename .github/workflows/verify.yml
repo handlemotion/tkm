@@ -1,0 +1,21 @@
+name: Verify
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  release-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify versions, Python syntax, and installer payload
+        run: python3 tools/release.py verify
+      - name: Check Maya.env marker removal
+        run: python3 tools/check_maya_env.py
+      - name: Build and inspect the installer package
+        run: python3 tools/release.py package --output-dir "$RUNNER_TEMP/tkm-release"

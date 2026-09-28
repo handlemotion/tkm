@@ -50,7 +50,7 @@ except ImportError:
 
 
 
-TKM_VERSION = "Beta 0.1.4 / Build 306"
+TKM_VERSION = "Beta 0.1.5 / Build 307"
 
 
 def get_screen_resolution():
@@ -74,6 +74,32 @@ def get_screen_resolution():
     return screen_width, screen_height
 
 
+TKM_ENV_START = b"# THIS LINE IS HERE FOR UNINSTALLING PURPOSES, PLEASE DO NOT TOUCH. START OF THEKEYMACHINE CODE"
+TKM_ENV_END = b"# END OF THEKEYMACHINE CODE"
+
+
+def _remove_tkm_env_blocks(data):
+    prefix = b"\xef\xbb\xbf" if data.startswith(b"\xef\xbb\xbf") else b""
+    output = []
+    block = []
+    for line in data[len(prefix):].splitlines(keepends=True):
+        marker = line.rstrip(b"\r\n")
+        if not block:
+            if marker == TKM_ENV_START:
+                block = [line]
+            else:
+                output.append(line)
+        elif marker == TKM_ENV_END:
+            block = []
+        elif marker == TKM_ENV_START:
+            output.extend(block)
+            block = [line]
+        else:
+            block.append(line)
+    output.extend(block)
+    return prefix + b"".join(output)
+
+
 def update_maya_env():
     version_maya = cmds.about(version=True)
     user_dir = cmds.internalVar(userAppDir=True)
@@ -84,17 +110,21 @@ def update_maya_env():
     user_app_folder = cmds.internalVar(userAppDir=True)
     tkm_img_folder = os.path.join(user_app_folder, "scripts/TheKeyMachine/data/img")
     
-    new_line = f"\n# THIS LINE IS HERE FOR UNINSTALLING PURPOSES, PLEASE DO NOT TOUCH. START OF THEKEYMACHINE CODE\nXBMLANGPATH = {tkm_img_folder};%XBMLANGPATH%\n# END OF THEKEYMACHINE CODE\n"
-    
-    if platform.system() != 'Windows':
-        new_line = f"\n# THIS LINE IS HERE FOR UNINSTALLING PURPOSES, PLEASE DO NOT TOUCH. START OF THEKEYMACHINE CODE\nXBMLANGPATH = {tkm_img_folder}:$XBMLANGPATH\n# END OF THEKEYMACHINE CODE\n"
-
-    if not os.path.exists(env_file_path):
-        with open(env_file_path, 'w') as file:
-            file.write(new_line)
+    if os.path.exists(env_file_path):
+        with open(env_file_path, 'rb') as file:
+            env_data = file.read()
     else:
-        with open(env_file_path, 'a') as file:
-            file.write(new_line)
+        env_data = b""
+
+    first_newline = env_data.find(b"\n")
+    newline = os.linesep.encode("ascii") if first_newline < 0 else (b"\r\n" if first_newline > 0 and env_data[first_newline - 1:first_newline] == b"\r" else b"\n")
+    env_data = _remove_tkm_env_blocks(env_data)
+    path_separator = b";%XBMLANGPATH%" if platform.system() == 'Windows' else b":$XBMLANGPATH"
+    block = newline.join((TKM_ENV_START, b"XBMLANGPATH = " + tkm_img_folder.encode("utf-8") + path_separator, TKM_ENV_END, b""))
+    prefix = b"\xef\xbb\xbf" if env_data.startswith(b"\xef\xbb\xbf") else b""
+    updated_env_data = prefix + block + env_data[len(prefix):]
+    with open(env_file_path, 'wb') as file:
+        file.write(updated_env_data)
 
 
 
@@ -164,11 +194,9 @@ def install(button, checkbox, tkm_version, window):
 
 def load_ui():
 
-    import importlib
     import TheKeyMachine.core.toolbar
     TheKeyMachine.core.toolbar.tb.create_shelf_icon()
-    importlib.reload(TheKeyMachine.core.toolbar)
-    TheKeyMachine.core.toolbar.tb.startUI()
+    TheKeyMachine.core.toolbar.tb.reload()
 
 def maya_main_window():
     main_window_ptr = omui.MQtUtil.mainWindow()
@@ -181,7 +209,7 @@ def TheKeyMachine_installer():
     os_platform = platform.system()
     python_version = f"{sys.version_info.major}{sys.version_info.minor}"
     supported_os = ['Windows', 'Linux', 'Darwin']
-    supported_python_versions = ['37', '39', '310', '311']
+    supported_python_versions = ['37', '39', '310', '311', '313']
 
     if os_platform in supported_os and python_version in supported_python_versions:
 
@@ -319,7 +347,7 @@ def TheKeyMachine_installer():
         window.show()
     else:
         cmds.confirmDialog(title='Error',
-                           message='Oh no! Unfortunately, you are using an incompatible version of Maya or operating system. TheKeyMachine is only available for Maya 2022, 2023, 2024 on Linux, Windows and MacOS.',
+                           message='Oh no! Unfortunately, you are using an incompatible version of Maya or operating system. TheKeyMachine supports Maya 2022, 2023, 2024, 2025 and 2027 on Linux, Windows and macOS.',
                            button=['Ok'],
                            defaultButton='Ok')
 

@@ -221,8 +221,6 @@ WorkspaceName = 'k'
 selection_sets_workspace = 's'
 
 class toolbar(object):
-    open_new_scene_scriptJob = None
-
     def __init__(self):
         self.bar_center_value = 10
         self.anim_offset_run_timer = True
@@ -233,6 +231,9 @@ class toolbar(object):
         self.move_keyframes_intField = None
         self.setgroup_states = {}
         self.setgroup_buttons = {}
+        self.open_new_scene_scriptJob = None
+        self.selection_changed_scriptJob = None
+        self._center_toolbar_stop = threading.Event()
         self.tc = threading.Thread(target=self.toolbar_center_time, args=(1,))      # Create a thread to center the toolbar
         self.run_centerToolbar = True
         self.tc.start()
@@ -246,15 +247,11 @@ class toolbar(object):
 
         # When loading a new scene, the on_scene_opened() function is executed, which includes, among other things, the function to update the selectionSets.
         # This first if statement checks whether the scriptJob exists; if not, it either creates or deletes it.
-        if toolbar.open_new_scene_scriptJob is not None and self.isScriptJobActive(toolbar.open_new_scene_scriptJob):
-            cmds.scriptJob(kill=toolbar.open_new_scene_scriptJob, force=True)
-
-
         # Function that runs when new scenes are opened
         def on_scene_opened():
             self.update_selectionSets_on_new_scene()
             self.update_popup_menu()
-        toolbar.open_new_scene_scriptJob = cmds.scriptJob(event=("SceneOpened", on_scene_opened))
+        self.open_new_scene_scriptJob = cmds.scriptJob(event=("SceneOpened", on_scene_opened))
 
 
 
@@ -328,13 +325,15 @@ class toolbar(object):
         cmds.shelfButton(parent=current_shelf_tab, image=icon_path, command=command, label=button_name)
     
 
-    # Evaluate if the scriptJob that launches on_scene_opened() is active
-    def isScriptJobActive(self, jobId):
-        activeJobs = cmds.scriptJob(listJobs=True)
-        for job in activeJobs:
-            if str(jobId) in job:
-                return True
-        return False
+    def cleanup(self):
+        self.stop_center_toolbar_thread()
+        for attribute in ("open_new_scene_scriptJob", "selection_changed_scriptJob"):
+            job_id = getattr(self, attribute, None)
+            if job_id is not None and cmds.scriptJob(exists=job_id):
+                cmds.scriptJob(kill=job_id, force=True)
+            setattr(self, attribute, None)
+        if self.tc.is_alive() and self.tc is not threading.current_thread():
+            self.tc.join(timeout=1)
 
 
     # OBSOLETED - to be removed
@@ -404,7 +403,7 @@ class toolbar(object):
 
 
 
-    def reload(*args):
+    def reload(self, *args):
         toolbar_module_name = 'TheKeyMachine.core.toolbar'
         customGraph_module_name = 'TheKeyMachine.core.customGraph'
         
@@ -413,9 +412,7 @@ class toolbar(object):
         customGraph_module = importlib.import_module(customGraph_module_name)
 
 
-        # If the scriptJob already exists and is active, terminate it
-        if hasattr(toolbar_module.toolbar, 'open_new_scene_scriptJob') and toolbar_module.toolbar().isScriptJobActive(toolbar_module.toolbar.open_new_scene_scriptJob):
-            cmds.scriptJob(kill=toolbar_module.toolbar.open_new_scene_scriptJob, force=True)
+        self.cleanup()
 
         if cmds.workspaceControl(WorkspaceName, q=True, exists=True):
             # Borrar el workspaceControl
@@ -1844,7 +1841,8 @@ class toolbar(object):
 
 
 
-    def deleteBar(*args):
+    def deleteBar(self, *args):
+        self.cleanup()
         cmds.deleteUI(WorkspaceName, control=True)
 
 
@@ -2090,8 +2088,7 @@ class toolbar(object):
             self.centrar()
 
         
-        while self.run_centerToolbar: 
-            time.sleep(interval)
+        while not self._center_toolbar_stop.wait(interval):
             utils.executeDeferred(centerBar_run)
 
 
@@ -2140,6 +2137,7 @@ class toolbar(object):
 
     def stop_center_toolbar_thread(self):
         self.run_centerToolbar = False
+        self._center_toolbar_stop.set()
 
 
 
@@ -2151,13 +2149,7 @@ class toolbar(object):
 
         tkm_version = general.get_thekeymachine_version()
 
-        app = QApplication.instance()
-        if not app:
-            app = QApplication([])
-
-        desktop = QDesktopWidget()
-        screen_resolution = desktop.screenGeometry()
-        width, height = screen_resolution.width(), screen_resolution.height()
+        width, height = self.get_screen_resolution()
 
         tkm_toolbar_width = cmds.workspaceControl(WorkspaceName, query=True, width=True)
         sobrante = tkm_toolbar_width - user_preferences.toolbar_size
@@ -2253,9 +2245,7 @@ class toolbar(object):
 
 
     def set_reload(self):
-
-        import TheKeyMachine.core.toolbar as t
-        importlib.reload(t)
+        self.reload()
 
 
 
@@ -3660,7 +3650,9 @@ class toolbar(object):
             num_selected = len(selected_objects)
             cmds.button('selector_button', edit=True, label=str(num_selected))
 
-        scriptjob_id = cmds.scriptJob(event=["SelectionChanged", update_button_text])
+        if self.selection_changed_scriptJob is not None and cmds.scriptJob(exists=self.selection_changed_scriptJob):
+            cmds.scriptJob(kill=self.selection_changed_scriptJob, force=True)
+        self.selection_changed_scriptJob = cmds.scriptJob(event=["SelectionChanged", update_button_text])
 
 
 
@@ -4316,4 +4308,6 @@ class toolbar(object):
         update_tooltips()
 
 
+if 'tb' in globals() and hasattr(tb, 'cleanup'):
+    tb.cleanup()
 tb = toolbar()
