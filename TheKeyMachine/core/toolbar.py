@@ -350,7 +350,16 @@ class toolbar(object):
         icon_path = media.shelf_icon
         icon_path = os.path.normpath(icon_path)
         current_shelf_tab = cmds.tabLayout("ShelfLayout", query=True, selectTab=True)
-        cmds.shelfButton(parent=current_shelf_tab, image=icon_path, command=command, label=button_name)
+        shelves = cmds.tabLayout("ShelfLayout", query=True, childArray=True) or []
+        shelf_buttons = [item for shelf in shelves for item in (cmds.shelfLayout(shelf, query=True, childArray=True) or [])]
+        existing_buttons = [item for item in shelf_buttons if cmds.shelfButton(item, exists=True) and cmds.shelfButton(item, query=True, label=True) == button_name]
+        if existing_buttons:
+            cmds.shelfButton(existing_buttons[0], edit=True, image=icon_path, command=command)
+            for duplicate in existing_buttons[1:]:
+                cmds.deleteUI(duplicate)
+        else:
+            cmds.shelfButton(parent=current_shelf_tab, image=icon_path, command=command, label=button_name)
+        cmds.saveAllShelves("ShelfLayout")
     
 
     def cleanup(self):
@@ -1193,7 +1202,7 @@ class toolbar(object):
                 "    border-radius: 5px;"
                 "}}"
             )
-            button.clicked.connect(lambda c=color_suffix, field=set_name_field, combo=set_group_combo: self.create_new_set_and_update_buttons(c, field, combo))
+            button.clicked.connect(functools.partial(self.create_new_set_and_update_buttons, color_suffix, set_name_field, set_group_combo))
 
 
             color_button_layout.addWidget(button)
@@ -1347,10 +1356,7 @@ class toolbar(object):
                 new_set = cmds.sets(name=new_set_name, empty=True)
                 cmds.addAttr(new_set, longName="hidden", attributeType="bool", defaultValue=False)
 
-                # Asegúrate de que se selecciona algo en la escena
-                if cmds.ls(selection=True):
-                    # Añade la selección actual al nuevo conjunto de selección
-                    cmds.sets(cmds.ls(selection=True), add=new_set)
+                cmds.sets(selection, add=new_set)
 
                 # Añade el nuevo conjunto al conjunto del grupo seleccionado (con el sufijo "_setgroup")
                 set_group_with_suffix = set_group_name + "_setgroup"
@@ -1501,13 +1507,7 @@ class toolbar(object):
             for child in children:
                 cmds.deleteUI(child)
 
-        # Crear el botón 'SET' sin importar si hay conjuntos de selección o no
-        cmds.separator(style='none', width=5, p="selection_sets_flow_layout")
-        selset_button = cmds.iconTextButton(l=' SET ', image=media.add_selection_set_image, h=32, w=32, c=self.selection_sets_setup, p="selection_sets_flow_layout")
-        cmds.separator(style='none', width=5, p="selection_sets_flow_layout")
-        cmds.popupMenu(parent=selset_button)
-        cmds.menuItem(label="Export Sets", c=self.export_sets)
-        cmds.menuItem(label="Import Sets", c=self.import_sets)
+        self.create_buttons_for_sel_sets()
 
 
 
@@ -1653,7 +1653,8 @@ class toolbar(object):
                 if cmds.objExists(sub_sel_set):
                     split_name = sub_sel_set.split('_')
                     color_suffix = split_name[-1]
-                    set_name = "_".join(split_name[:-2])  # Une todas las partes del nombre, excepto las dos últimas partes.
+                    group_name = set_group[:-len("_setgroup")]
+                    set_name = sub_sel_set.rsplit(f"_{group_name}", 1)[0]
 
 
                     # Obtiene el valor del color del código de color
