@@ -23,6 +23,7 @@ import os
 import platform
 import re
 import shutil
+import tempfile
 import logging
 from functools import partial
 
@@ -178,24 +179,30 @@ def install(button, checkbox, tkm_version, window):
     if not os.path.exists(os.path.join(user_dir, "scripts")):
         os.makedirs(os.path.join(user_dir, "scripts"))
 
-    if os.path.exists(destination_dir):
-        uninstalled_folder_path = os.path.join(destination_dir, "uninstalled")
-        if os.path.exists(uninstalled_folder_path):
-            shutil.rmtree(destination_dir)
-            print("Old TheKeyMachine folder removed.")
-        else:
-            msg_box = QtWidgets.QMessageBox()
-            msg_box.setWindowTitle("Installation Warning")
-            msg_box.setText("TheKeyMachine folder already exists in the scripts directory. Please remove it before proceeding with the installation.")
-            msg_box.setIcon(QtWidgets.QMessageBox.Warning)
-            ok_button = msg_box.addButton('OK', QtWidgets.QMessageBox.AcceptRole)
-            ok_button.setMinimumHeight(30)
-            ok_button.setMinimumWidth(80)
-            msg_box.exec()
-            return
-
     try:
-        shutil.copytree(source_dir, destination_dir)
+        same_install = os.path.exists(destination_dir) and os.path.samefile(source_dir, destination_dir)
+        if not same_install:
+            config_path = os.path.join(destination_dir, "data", "config", "config.json")
+            existing_config = None
+            if os.path.isfile(config_path):
+                with open(config_path, "rb") as config_file:
+                    existing_config = config_file.read()
+
+            with tempfile.TemporaryDirectory(prefix=".tkm_install_", dir=os.path.dirname(destination_dir)) as backup_root:
+                backup_dir = os.path.join(backup_root, "TheKeyMachine")
+                if os.path.exists(destination_dir):
+                    os.replace(destination_dir, backup_dir)
+                try:
+                    shutil.copytree(source_dir, destination_dir)
+                    if existing_config is not None:
+                        with open(os.path.join(destination_dir, "data", "config", "config.json"), "wb") as config_file:
+                            config_file.write(existing_config)
+                except Exception:
+                    if os.path.exists(destination_dir):
+                        shutil.rmtree(destination_dir)
+                    if os.path.exists(backup_dir):
+                        os.replace(backup_dir, destination_dir)
+                    raise
     except Exception as e:
         QtWidgets.QMessageBox.critical(
             button, "Installation Error", f"An error occurred while copying files: {str(e)}")
@@ -216,8 +223,9 @@ def install(button, checkbox, tkm_version, window):
 def load_ui():
 
     import TheKeyMachine.core.toolbar
-    TheKeyMachine.core.toolbar.tb.create_shelf_icon()
     TheKeyMachine.core.toolbar.tb.reload()
+    TheKeyMachine.core.toolbar.tb.create_shelf_icon()
+    cmds.workspaceLayoutManager(save=True)
 
 def maya_main_window():
     main_window_ptr = omui.MQtUtil.mainWindow()
