@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag whose assets should be rebuilt
+        required: true
+        type: string
 
 concurrency:
   group: release-${{ github.ref }}
@@ -19,26 +24,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Open or publish the release
+        if: github.event_name == 'push'
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
       - uses: actions/checkout@v6
-        if: steps.release.outputs.release_created == 'true'
+        if: steps.release.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
         with:
-          ref: ${{ steps.release.outputs.tag_name }}
+          ref: ${{ inputs.tag || steps.release.outputs.tag_name }}
           persist-credentials: false
       - name: Verify and package released commit
-        if: steps.release.outputs.release_created == 'true'
+        if: steps.release.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
         env:
-          TAG: ${{ steps.release.outputs.tag_name }}
+          TAG: ${{ inputs.tag || steps.release.outputs.tag_name }}
         run: |
           python3 tools/release.py verify --tag "$TAG"
           python3 tools/release.py package --tag "$TAG" --output-dir dist
       - name: Upload release assets
-        if: steps.release.outputs.release_created == 'true'
+        if: steps.release.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release.outputs.tag_name }}
+          TAG: ${{ inputs.tag || steps.release.outputs.tag_name }}
         run: |
           gh release upload "$TAG" \
             "dist/TheKeyMachine-$TAG.zip" \
-            "dist/TheKeyMachine-$TAG.zip.sha256"
+            "dist/TheKeyMachine-$TAG.zip.sha256" \
+            --clobber
